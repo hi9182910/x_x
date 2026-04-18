@@ -1,5 +1,4 @@
 
-print('hi update test');
 getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
 
 
