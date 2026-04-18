@@ -1,4 +1,6 @@
 
+
+   
 getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
 
 
@@ -1107,246 +1109,245 @@ end
         end
         updateTargetVisuals()
     end))
+rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
+    local cfg = shared['x_x']['Camera Aimbot']
+    if not cfg or not cfg.Enabled then
+        if camFOVCircle then camFOVCircle:Remove() camFOVCircle = nil end
+        if deadzoneCircle then deadzoneCircle:Remove() deadzoneCircle = nil end
+        return
+    end
 
-    rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
-        local cfg = shared['x_x']['Camera Aimbot']
-        if not cfg or not cfg.Enabled then
-            if camFOVCircle then camFOVCircle:Remove() camFOVCircle = nil end
-            if deadzoneCircle then deadzoneCircle:Remove() deadzoneCircle = nil end
-            return
+    local shouldBeActive = (cfg.Mode == "Toggle" and camLockActive) or (cfg.Mode == "Hold" and camLockHold)
+
+    if camLockTarget then
+        local char = camLockTarget.Character
+        if not char or not char.Parent or not camLockTarget.Parent or not char:FindFirstChildWhichIsA("Humanoid") or (char:FindFirstChildWhichIsA("Humanoid") and char:FindFirstChildWhichIsA("Humanoid").Health <= 0) then
+            camLockTarget = nil
         end
+    end
 
-        local shouldBeActive = (cfg.Mode == "Toggle" and camLockActive) or (cfg.Mode == "Hold" and camLockHold)
+    local target = camLockTarget
+    if not target or not target.Character then
+        shared.snapFrameCounter = 0
+        if camFOVCircle then camFOVCircle:Remove() camFOVCircle = nil end
+        if deadzoneCircle then deadzoneCircle:Remove() deadzoneCircle = nil end
+        return
+    end
 
-        if camLockTarget then
-            local char = camLockTarget.Character
-            if not char or not char.Parent or not camLockTarget.Parent or not char:FindFirstChildWhichIsA("Humanoid") or (char:FindFirstChildWhichIsA("Humanoid") and char:FindFirstChildWhichIsA("Humanoid").Health <= 0) then
-                camLockTarget = nil
-            end
+    local root = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso")
+    if not root then return end
+
+    local hit = getClosestHitPoint(target.Character, true)
+    if not hit or not hit.Position or not hit.Part then return end
+
+    local targetPos = hit.Position
+    local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+    local mousePos = UserInputService:GetMouseLocation()
+    local mainDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+    local fovTable = cfg.FOV or {}
+    local mainRadius = tonumber(fovTable.Radius) or 365
+    local deadzoneRadius = tonumber(fovTable['Deadzone FOV']) or 65
+    local isVisibleNow = isVisible(camera.CFrame.Position, hit.Part, target.Character)
+    local zoom = (camera.CFrame.Position - camera.Focus.Position).Magnitude
+    local isFP = zoom < 1
+    local cond = cfg['Camera Aimbot Conditions'] or {}
+    local allowedPerson = (cond['First Person'] and isFP) or (cond['Third Person'] and not isFP)
+    local allowedClick = not cond['Right Click'] or rightClickHeld
+    
+    local criteriaMet = shouldBeActive and isVisibleNow and allowedPerson and allowedClick and mainDist <= mainRadius
+
+    local isOnPlayer = false
+    if criteriaMet and onScreen and hit.Part then
+        local part = hit.Part
+        local mouseRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+        local relativeCFrame = part.CFrame:PointToObjectSpace(mouseRay.Origin)
+        local relativeDirection = part.CFrame:VectorToObjectSpace(mouseRay.Direction)
+        local half = part.Size * 0.5
+        
+        local t = -relativeCFrame.Z / relativeDirection.Z
+        local localHit = relativeCFrame + (relativeDirection * t)
+        
+        if math.abs(localHit.X) <= half.X and math.abs(localHit.Y) <= half.Y then
+            isOnPlayer = true
         end
+    end
 
-        local target = camLockTarget
-        if not target or not target.Character then
-            if camFOVCircle then camFOVCircle:Remove() camFOVCircle = nil end
-            if deadzoneCircle then deadzoneCircle:Remove() deadzoneCircle = nil end
-            return
+    local snapCfg = cfg['Snap Delay'] or {}
+    local maxDelay = shared.currentSnapDelay or 8
+
+    if criteriaMet then
+        if isOnPlayer then
+            shared.snapFrameCounter = maxDelay 
+        else
+            shared.snapFrameCounter = (shared.snapFrameCounter or 0) + 1
         end
-
-        local root = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso")
-        if not root then return end
-
-        local distance = (root.Position - camera.CFrame.Position).Magnitude
-        if distance > (cfg['Max Range'] or 750) then return end
-
-        local hit = getClosestHitPoint(target.Character, true)
-        if not hit or not hit.Position or not hit.Part then return end
-
-        local targetPos = hit.Position
-        local screenPos = camera:WorldToViewportPoint(targetPos)
-        local mousePos = UserInputService:GetMouseLocation()
-        local mainDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-
-        local fovTable = cfg.FOV or {}
-        local mainRadius = tonumber(fovTable.Radius) or 365
-        local deadzoneRadius = tonumber(fovTable['Deadzone FOV']) or 65
-
-        local isVisibleNow = isVisible(camera.CFrame.Position, hit.Part, target.Character)
-        local zoom = (camera.CFrame.Position - camera.Focus.Position).Magnitude
-        local isFP = zoom < 1
-        local cond = cfg['Camera Aimbot Conditions'] or {}
-        local allowedPerson = (cond['First Person'] and isFP) or (cond['Third Person'] and not isFP)
-        local allowedClick = not cond['Right Click'] or rightClickHeld
-        local activated = shouldBeActive and isVisibleNow and allowedPerson and allowedClick and mainDist <= mainRadius
-
-        if fovTable['Show FOV'] then
-            if not camFOVCircle then
-                camFOVCircle = Drawing.new("Circle")
-                camFOVCircle.NumSides = 32
-                camFOVCircle.Thickness = 2
-                camFOVCircle.Filled = false
-                camFOVCircle.Transparency = 0.85
-                camFOVCircle.Visible = true
-            end
-            camFOVCircle.Position = mousePos
-            camFOVCircle.Radius = mainRadius
-            camFOVCircle.Color = activated and Color3.fromRGB(50,205,50) or Color3.fromRGB(255,255,255)
-        elseif camFOVCircle then
-            camFOVCircle:Remove()
-            camFOVCircle = nil
+    else
+        shared.snapFrameCounter = 0
+        if snapCfg.Randomize and snapCfg.Randomize.Enabled then
+            shared.currentSnapDelay = math.random(snapCfg.Randomize.Min, snapCfg.Randomize.Max)
+        else
+            shared.currentSnapDelay = snapCfg.Delay or 8
         end
+    end
 
-        local inDeadzone = mainDist <= deadzoneRadius
+    local activated = criteriaMet and (shared.snapFrameCounter >= maxDelay)
 
-        if fovTable["Show Deadzone FOV"] then
-            if not deadzoneCircle then
-                deadzoneCircle = Drawing.new("Circle")
-                deadzoneCircle.NumSides = 32
-                deadzoneCircle.Thickness = 2
-                deadzoneCircle.Filled = false
-                deadzoneCircle.Transparency = 0.85
-                deadzoneCircle.Visible = true
-            end
-            deadzoneCircle.Position = mousePos
-            deadzoneCircle.Radius = deadzoneRadius
-            deadzoneCircle.Color = (activated and inDeadzone) and Color3.fromRGB(255,165,0) or Color3.fromRGB(255,255,255)
-        elseif deadzoneCircle then
-            deadzoneCircle:Remove()
-            deadzoneCircle = nil
+    if fovTable['Show FOV'] then
+        if not camFOVCircle then
+            camFOVCircle = Drawing.new("Circle")
+            camFOVCircle.NumSides = 32
+            camFOVCircle.Thickness = 2
+            camFOVCircle.Transparency = 0.85
+            camFOVCircle.Visible = true
         end
+        camFOVCircle.Position = mousePos
+        camFOVCircle.Radius = mainRadius
+        camFOVCircle.Color = activated and Color3.fromRGB(50,205,50) or Color3.fromRGB(255,255,255)
+    elseif camFOVCircle then
+        camFOVCircle:Remove()
+        camFOVCircle = nil
+    end
 
-        if not activated then return end
-
-        local smoothX, smoothY = 0.5, 0.5
-        local snappiness = cfg['Snappiness']
-        if snappiness and snappiness.Enabled then
-            if snappiness['Type'] == "Simple" then
-                smoothX = snappiness.Simple and snappiness.Simple.X or 0.167
-                smoothY = snappiness.Simple and snappiness.Simple.Y or 0.139
-            else
-                local str = snappiness.Advanced and snappiness.Advanced.Strength or {}
-                local sens = snappiness.Advanced and snappiness.Advanced.Sensitivity or 1
-                smoothX = (str['X Strength'] or 0.123) * sens
-                smoothY = (str['Y Strength'] or 0.123) * sens
-            end
+    local inDeadzone = mainDist <= deadzoneRadius
+    if fovTable["Show Deadzone FOV"] then
+        if not deadzoneCircle then
+            deadzoneCircle = Drawing.new("Circle")
+            deadzoneCircle.NumSides = 32
+            deadzoneCircle.Thickness = 2
+            deadzoneCircle.Transparency = 0.85
+            deadzoneCircle.Visible = true
         end
+        deadzoneCircle.Position = mousePos
+        deadzoneCircle.Radius = deadzoneRadius
+        deadzoneCircle.Color = (activated and inDeadzone) and Color3.fromRGB(255,165,0) or Color3.fromRGB(255,255,255)
+    elseif deadzoneCircle then
+        deadzoneCircle:Remove()
+        deadzoneCircle = nil
+    end
 
-        local humanize = cfg['Humanize'] or {}
-        if inDeadzone and humanize['Deadzone Snappiness'] and humanize['Deadzone Snappiness'].Enabled then
-            local mult = humanize['Deadzone Snappiness']['Deadzone Multiplier'] or {}
-            smoothX = smoothX * (mult.X or 1)
-            smoothY = smoothY * (mult.Y or 1)
+    if not activated then return end
+
+    local smoothX, smoothY = 0.5, 0.5
+    local snappiness = cfg['Snappiness']
+    if snappiness and snappiness.Enabled then
+        if snappiness['Type'] == "Simple" then
+            smoothX = snappiness.Simple and snappiness.Simple.X or 0.167
+            smoothY = snappiness.Simple and snappiness.Simple.Y or 0.139
+        else
+            local str = snappiness.Advanced and snappiness.Advanced.Strength or {}
+            local sens = snappiness.Advanced and snappiness.Advanced.Sensitivity or 1
+            smoothX = (str['X Strength'] or 0.123) * sens
+            smoothY = (str['Y Strength'] or 0.123) * sens
         end
+    end
 
-        local rawAlphaX = 1 - math.exp(-smoothX * dt * 60)
-        local rawAlphaY = 1 - math.exp(-smoothY * dt * 60)
+    local humanize = cfg['Humanize'] or {}
+    if inDeadzone and humanize['Deadzone Snappiness'] and humanize['Deadzone Snappiness'].Enabled then
+        local mult = humanize['Deadzone Snappiness']['Deadzone Multiplier'] or {}
+        smoothX = smoothX * (mult.X or 1)
+        smoothY = smoothY * (mult.Y or 1)
+    end
 
-        local function getEasedAlpha(alpha, style, direction)
-            style = style or "Linear"
-            direction = direction or "InOut"
-            if direction == "In" then
-                if style == "Sine" then return 1 - math.cos(alpha * math.pi / 2) end
-                if style == "Quad" then return alpha * alpha end
-                if style == "Cubic" then return alpha * alpha * alpha end
-                if style == "Quart" then return alpha^4 end
-                if style == "Quint" then return alpha^5 end
-                if style == "Expo" then return alpha == 0 and 0 or 2^(10 * (alpha - 1)) end
-                if style == "Circ" then return 1 - math.sqrt(1 - alpha * alpha) end
-                if style == "Back" then return alpha * alpha * (3 * alpha - 2) end
-                return alpha
-            elseif direction == "Out" then
-                if style == "Sine" then return math.sin(alpha * math.pi / 2) end
-                if style == "Quad" then return 1 - (1 - alpha)^2 end
-                if style == "Cubic" then return 1 - (1 - alpha)^3 end
-                if style == "Quart" then return 1 - (1 - alpha)^4 end
-                if style == "Quint" then return 1 - (1 - alpha)^5 end
-                if style == "Expo" then return alpha == 1 and 1 or 1 - 2^(-10 * alpha) end
-                if style == "Circ" then return math.sqrt(1 - (alpha - 1)^2) end
-                if style == "Back" then local a = 1 - alpha return 1 - a * a * (3 * a - 2) end
-                return alpha
-            else
-                if style == "Sine" then return (1 - math.cos(alpha * math.pi)) / 2 end
-                if style == "Quad" then return alpha < 0.5 and 2 * alpha * alpha or 1 - 2 * (1 - alpha)^2 end
-                if style == "Cubic" then return alpha < 0.5 and 4 * alpha * alpha * alpha or 1 - 4 * (1 - alpha)^3 end
-                if style == "Quart" then return alpha < 0.5 and 8 * alpha * alpha * alpha or 1 - 8 * (1 - alpha)^4 end
-                if style == "Quint" then return alpha < 0.5 and 16 * alpha * alpha * alpha or 1 - 16 * (1 - alpha)^5 end
-                if style == "Expo" then return alpha == 0 and 0 or (alpha == 1 and 1 or (alpha < 0.5 and 2^(10 * (2 * alpha - 1)) * 0.5 or 1 - 2^(-10 * (2 * alpha - 1)) * 0.5)) end
-                if style == "Circ" then return alpha < 0.5 and (1 - math.sqrt(1 - (2 * alpha)^2)) * 0.5 or (math.sqrt(1 - (2 * (alpha - 1))^2) + 1) * 0.5 end
-                if style == "Back" then
-                    local c1 = 1.70158
-                    local c2 = c1 * 1.525
-                    if alpha < 0.5 then
-                        return (2 * alpha)^2 * ((c2 + 1) * 2 * alpha - c2) * 0.5
-                    else
-                        return ((2 * alpha - 2)^2 * ((c2 + 1) * (2 * alpha - 2) + c2) + 2) * 0.5
-                    end
+    local rawAlphaX = 1 - math.exp(-smoothX * dt * 60)
+    local rawAlphaY = 1 - math.exp(-smoothY * dt * 60)
+
+    local function getEasedAlpha(alpha, style, direction)
+        style = style or "Linear"
+        direction = direction or "InOut"
+        if direction == "In" then
+            if style == "Sine" then return 1 - math.cos(alpha * math.pi / 2) end
+            if style == "Quad" then return alpha * alpha end
+            if style == "Cubic" then return alpha * alpha * alpha end
+            if style == "Quart" then return alpha^4 end
+            if style == "Quint" then return alpha^5 end
+            if style == "Expo" then return alpha == 0 and 0 or 2^(10 * (alpha - 1)) end
+            if style == "Circ" then return 1 - math.sqrt(1 - alpha * alpha) end
+            if style == "Back" then return alpha * alpha * (3 * alpha - 2) end
+            return alpha
+        elseif direction == "Out" then
+            if style == "Sine" then return math.sin(alpha * math.pi / 2) end
+            if style == "Quad" then return 1 - (1 - alpha)^2 end
+            if style == "Cubic" then return 1 - (1 - alpha)^3 end
+            if style == "Quart" then return 1 - (1 - alpha)^4 end
+            if style == "Quint" then return 1 - (1 - alpha)^5 end
+            if style == "Expo" then return alpha == 1 and 1 or 1 - 2^(-10 * alpha) end
+            if style == "Circ" then return math.sqrt(1 - (alpha - 1)^2) end
+            if style == "Back" then local a = 1 - alpha return 1 - a * a * (3 * a - 2) end
+            return alpha
+        else
+            if style == "Sine" then return (1 - math.cos(alpha * math.pi)) / 2 end
+            if style == "Quad" then return alpha < 0.5 and 2 * alpha * alpha or 1 - 2 * (1 - alpha)^2 end
+            if style == "Cubic" then return alpha < 0.5 and 4 * alpha * alpha * alpha or 1 - 4 * (1 - alpha)^3 end
+            if style == "Quart" then return alpha < 0.5 and 8 * alpha * alpha * alpha or 1 - 8 * (1 - alpha)^4 end
+            if style == "Quint" then return alpha < 0.5 and 16 * alpha * alpha * alpha or 1 - 16 * (1 - alpha)^5 end
+            if style == "Expo" then return alpha == 0 and 0 or (alpha == 1 and 1 or (alpha < 0.5 and 2^(10 * (2 * alpha - 1)) * 0.5 or 1 - 2^(-10 * (2 * alpha - 1)) * 0.5)) end
+            if style == "Circ" then return alpha < 0.5 and (1 - math.sqrt(1 - (2 * alpha)^2)) * 0.5 or (math.sqrt(1 - (2 * (alpha - 1))^2) + 1) * 0.5 end
+            if style == "Back" then
+                local c1, c2 = 1.70158, 1.70158 * 1.525
+                if alpha < 0.5 then
+                    return (2 * alpha)^2 * ((c2 + 1) * 2 * alpha - c2) * 0.5
+                else
+                    return ((2 * alpha - 2)^2 * ((c2 + 1) * (2 * alpha - 2) + c2) + 2) * 0.5
                 end
-                return alpha
             end
+            return alpha
         end
+    end
 
-        local easingStyle = cfg.Easing and cfg.Easing.Style or "Linear"
-        local easingDirection = cfg.Easing and cfg.Easing.Direction or "InOut"
-        local alphaX = getEasedAlpha(rawAlphaX, easingStyle, easingDirection)
-        local alphaY = getEasedAlpha(rawAlphaY, easingStyle, easingDirection)
+    local easingStyle = cfg.Easing and cfg.Easing.Style or "Linear"
+    local easingDirection = cfg.Easing and cfg.Easing.Direction or "InOut"
+    local alphaX = getEasedAlpha(rawAlphaX, easingStyle, easingDirection)
+    local alphaY = getEasedAlpha(rawAlphaY, easingStyle, easingDirection)
 
-        local shakeX, shakeY = 0, 0
-        if humanize['Micro Shake'] and humanize['Micro Shake'].Enabled then
-            local freq = humanize['Micro Shake'].Frequency or {}
-            local inten = humanize['Micro Shake'].Intensity or {}
-            shakeX = math.noise(tick() * (freq.X or 12)) * (inten.X or 1.8)
-            shakeY = math.noise(tick() * (freq.Y or 14) + 100) * (inten.Y or 1.6)
-        end
+    local shakeX, shakeY = 0, 0
+    if humanize['Micro Shake'] and humanize['Micro Shake'].Enabled then
+        local freq = humanize['Micro Shake'].Frequency or {}
+        local inten = humanize['Micro Shake'].Intensity or {}
+        shakeX = math.noise(tick() * (freq.X or 12)) * (inten.X or 1.8)
+        shakeY = math.noise(tick() * (freq.Y or 14) + 100) * (inten.Y or 1.6)
+    end
 
-        local useBezier = humanize['Bezier Curves'] and humanize['Bezier Curves'].Enabled
-        local curveType = useBezier and (humanize['Bezier Curves']['Curve Type'] or "Quadratic") or nil
+    local useBezier = humanize['Bezier Curves'] and humanize['Bezier Curves'].Enabled
+    local curveType = useBezier and (humanize['Bezier Curves']['Curve Type'] or "Quadratic") or nil
+    local method = cfg['Method'] or "Mouse"
 
-        local method = cfg['Method'] or "Mouse"
-
-        if method == "Mouse" then
-            local aimPos
-
-            if useBezier then
-                local startPos = camera.CFrame.Position
-                local toTarget = targetPos - startPos
-                local dist = toTarget.Magnitude
-
-                if dist < 0.001 then
-                    aimPos = targetPos
-                elseif curveType == "Cubic" then
-                    local t = 1 - math.exp(-3.5 * dt * 60)
-                    t = math.clamp(t, 0, 1)
-                    local p1 = startPos:Lerp(targetPos, 0.33)
-                    local p2 = startPos:Lerp(targetPos, 0.66)
-                    aimPos = (1-t)^3 * startPos + 3*(1-t)^2*t * p1 + 3*(1-t)*t^2 * p2 + t^3 * targetPos
-                else -- Exponential 
-                    local t = 1 - math.exp(-3.8 * dt * 60)
-                    t = math.clamp(t, 0, 1)
-                    aimPos = startPos:Lerp(targetPos, t)
-                end
+    if method == "Mouse" then
+        local aimPos
+        if useBezier then
+            local startPos = camera.CFrame.Position
+            local t = math.clamp(1 - math.exp(-3.8 * dt * 60), 0, 1)
+            if curveType == "Cubic" then
+                local p1, p2 = startPos:Lerp(targetPos, 0.33), startPos:Lerp(targetPos, 0.66)
+                aimPos = (1-t)^3 * startPos + 3*(1-t)^2*t * p1 + 3*(1-t)*t^2 * p2 + t^3 * targetPos
             else
-                aimPos = targetPos
-            end
-
-            local targetScreen = camera:WorldToViewportPoint(aimPos)
-            local deltaX = targetScreen.X - mousePos.X + shakeX
-            local deltaY = targetScreen.Y - mousePos.Y + shakeY
-            local moveX = deltaX * alphaX
-            local moveY = deltaY * alphaY
-
-            if math.abs(moveX) > 0.08 or math.abs(moveY) > 0.08 then
-                mousemoverel(moveX, moveY)
+                aimPos = startPos:Lerp(targetPos, t)
             end
         else
-            local targetCFrame
-
-            if useBezier then
-                local startPos = camera.CFrame.Position
-                local toTarget = targetPos - startPos
-                local dist = toTarget.Magnitude
-
-                if dist < 0.001 then
-                    targetCFrame = camera.CFrame
-                elseif curveType == "Cubic" then
-                    local t = 1 - math.exp(-3.5 * dt * 60)
-                    t = math.clamp(t, 0, 1)
-                    local p1 = startPos:Lerp(targetPos, 0.33)
-                    local p2 = startPos:Lerp(targetPos, 0.66)
-                    local bezPos = (1-t)^3 * startPos + 3*(1-t)^2*t * p1 + 3*(1-t)*t^2 * p2 + t^3 * targetPos
-                    targetCFrame = CFrame.lookAt(startPos, bezPos)
-                else
-                    local t = 1 - math.exp(-3.8 * dt * 60)
-                    t = math.clamp(t, 0, 1)
-                    local bezPos = startPos:Lerp(targetPos, t)
-                    targetCFrame = CFrame.lookAt(startPos, bezPos)
-                end
-            else
-                targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
-            end
-
-            local alpha = math.max(alphaX, alphaY)
-            camera.CFrame = camera.CFrame:Lerp(targetCFrame, alpha)
+            aimPos = targetPos
         end
-    end))
+
+        local targetScreen = camera:WorldToViewportPoint(aimPos)
+        local deltaX = (targetScreen.X - mousePos.X + shakeX) * alphaX
+        local deltaY = (targetScreen.Y - mousePos.Y + shakeY) * alphaY
+
+        if math.abs(deltaX) > 0.08 or math.abs(deltaY) > 0.08 then
+            mousemoverel(deltaX, deltaY)
+        end
+    else
+        local targetCFrame
+        if useBezier then
+            local startPos = camera.CFrame.Position
+            local t = math.clamp(1 - math.exp(-3.8 * dt * 60), 0, 1)
+            local bezPos = startPos:Lerp(targetPos, t)
+            targetCFrame = CFrame.lookAt(startPos, bezPos)
+        else
+            targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
+        end
+        camera.CFrame = camera.CFrame:Lerp(targetCFrame, math.max(alphaX, alphaY))
+    end
+end))
+
 
 GunHandler.getAim = function(origin, range)
     local cfg = shared['x_x']["Silent Aimbot"]
