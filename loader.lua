@@ -1,4 +1,6 @@
-  getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
+
+print('hi update test');
+getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
 
 
     local Players = game:GetService("Players")
