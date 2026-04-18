@@ -1,4 +1,3 @@
-print("oops i updated")
 getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
 
 
