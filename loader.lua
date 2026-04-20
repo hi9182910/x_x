@@ -110,7 +110,7 @@ getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
             mesh.MeshType = Enum.MeshType.FileMesh
             mesh.MeshId = meshId
             if textureId then mesh.TextureId = textureId end
-            mesh.Scale = Vector3.new(0.69, 1.2, 0.69)
+            mesh.Scale = Vector3.new(0.65, 1.13, 0.65)
             mesh.Offset = Vector3.new(0, 0.25, 0)
             mesh.Parent = part
 
@@ -1057,17 +1057,28 @@ end
         return base
     end
 
-    rs.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
-        clearTargetIfInvalid()
-        if shared['x_x']['Targeting']['Target Mode'] == "Select" and targetPlayer then
-            if shouldUnselect() then
-                clearTarget()
-            end
-        elseif shared['x_x']['Targeting']['Target Mode'] == "Automatic" then
-            targetPlayer = getBestTarget()
+rs.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function()
+    local function isTriggerWeaponWhitelisted()
+        local tool = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool")
+        if not tool then return false end
+        local whitelist = shared['x_x']['Trigger Bot']['Whitelisted Weapons']
+        if not whitelist then return true end
+        for _, name in ipairs(whitelist) do
+            if tool.Name == name then return true end
         end
-        local triggerCfg = shared['x_x']['Trigger Bot']
-        if triggerCfg.Enabled and not leftCtrlHeld and targetPlayer and targetPlayer.Character then
+        return false
+    end
+    clearTargetIfInvalid()
+    if shared['x_x']['Targeting']['Target Mode'] == "Select" and targetPlayer then
+        if shouldUnselect() then
+            clearTarget()
+        end
+    elseif shared['x_x']['Targeting']['Target Mode'] == "Automatic" then
+        targetPlayer = getBestTarget()
+    end
+    local triggerCfg = shared['x_x']['Trigger Bot']
+    if triggerCfg.Enabled and not leftCtrlHeld and targetPlayer and targetPlayer.Character then
+        if isTriggerWeaponWhitelisted() then
             local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
                 local distance = (root.Position - camera.CFrame.Position).Magnitude
@@ -1104,8 +1115,10 @@ end
                 end
             end
         end
-        updateTargetVisuals()
-    end))
+    end
+    updateTargetVisuals()
+end))
+
 rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
     local cfg = shared['x_x']['Camera Aimbot']
     if not cfg or not cfg.Enabled then
@@ -1113,6 +1126,31 @@ rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
         if deadzoneCircle then deadzoneCircle:Remove() deadzoneCircle = nil end
         return
     end
+
+    local character = game.Players.LocalPlayer.Character
+    local tool = character and character:FindFirstChildOfClass("Tool")
+    local whitelist = cfg['Whitelisted Weapons'] or {}
+    local isWhitelisted = false
+
+    if tool then
+        for _, weaponName in ipairs(whitelist) do
+            if tool.Name == weaponName then
+                isWhitelisted = true
+                break
+            end
+        end
+    end
+
+    if not isWhitelisted then
+        if camFOVCircle then camFOVCircle.Visible = false end
+        if deadzoneCircle then deadzoneCircle.Visible = false end
+        shared.snapFrameCounter = 0
+        return 
+    end
+
+    local fovTable = cfg.FOV or {}
+    if camFOVCircle then camFOVCircle.Visible = fovTable['Show FOV'] or false end
+    if deadzoneCircle then deadzoneCircle.Visible = fovTable["Show Deadzone FOV"] or false end
 
     local shouldBeActive = (cfg.Mode == "Toggle" and camLockActive) or (cfg.Mode == "Hold" and camLockHold)
 
@@ -1142,7 +1180,6 @@ rs.Heartbeat:Connect(LPH_NO_VIRTUALIZE(function(dt)
     local mousePos = UserInputService:GetMouseLocation()
     local mainDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
 
-    local fovTable = cfg.FOV or {}
     local mainRadius = tonumber(fovTable.Radius) or 365
     local deadzoneRadius = tonumber(fovTable['Deadzone FOV']) or 65
     local isVisibleNow = isVisible(camera.CFrame.Position, hit.Part, target.Character)
@@ -1347,7 +1384,20 @@ end))
 
 
 GunHandler.getAim = function(origin, range)
+    local function isSilentWeaponWhitelisted()
+        local tool = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool")
+        if not tool then return false end
+        local whitelist = shared['x_x']['Silent Aimbot']['Whitelisted Weapons']
+        if not whitelist then return true end
+        for _, name in ipairs(whitelist) do
+            if tool.Name == name then return true end
+        end
+        return false
+    end
     local cfg = shared['x_x']["Silent Aimbot"]
+    if not isSilentWeaponWhitelisted() then
+        return OriginalGetAim(origin, range)
+    end
     if not cfg or not cfg.Enabled then
         return OriginalGetAim(origin, range)
     end
@@ -1422,7 +1472,7 @@ end
     if _char then
         for _, v in ipairs(_char:GetChildren()) do
             if v:IsA("Tool") then
-                v:SetAttribute("GlorySetup", nil)
+                v:SetAttribute("Wiz", nil)
             end
         end
     end
@@ -1430,7 +1480,7 @@ end
     if _backpack then
         for _, tool in ipairs(_backpack:GetChildren()) do
             if tool:IsA("Tool") then
-                tool:SetAttribute("GlorySetup", nil)
+                tool:SetAttribute("Wiz", nil)
             end
         end
     end
@@ -1685,126 +1735,126 @@ end
             local anim = Instance.new("Animation")
             anim.AnimationId = cfg.animationid
             local track = animator:LoadAnimation(anim)
-            track.Looped = false
-            track:Play()
-            data.track = track
-            anim:Destroy()
-            track.Ended:Once(function()
-                if data.track == track then
-                    data.track = nil
-                end
-                track:Destroy()
-            end)
+                track.Looped = false
+                track:Play()
+                data.track = track
+                anim:Destroy()
+                track.Ended:Once(function()
+                    if data.track == track then
+                        data.track = nil
+                    end
+                    track:Destroy()
+                end)
+            end
+            if cfg.soundid and cfg.soundid ~= "" then
+                local snd = Instance.new("Sound")
+                snd.SoundId = cfg.soundid
+                snd.Parent = Workspace
+                snd:Play()
+                table.insert(data.sounds, snd)
+                snd.Ended:Connect(function()
+                    snd:Destroy()
+                end)
+            end
+            tool:SetAttribute("CurrentKnifeSkin", skin)
         end
-        if cfg.soundid and cfg.soundid ~= "" then
-            local snd = Instance.new("Sound")
-            snd.SoundId = cfg.soundid
-            snd.Parent = Workspace
-            snd:Play()
-            table.insert(data.sounds, snd)
-            snd.Ended:Connect(function()
-                snd:Destroy()
-            end)
-        end
-        tool:SetAttribute("CurrentKnifeSkin", skin)
-    end
 
-    local function applyCurrentSkin(tool)
-        if not tool or not tool.Parent then return end
-        local char = localPlayer.Character
-        if tool.Parent ~= char then return end
-        if not shared['x_x'] then return end
-        if not shared['x_x']['skins'] then return end
-        local skin = shared['x_x']['skins'][tool.Name]
-        if not skin or skin == "" then return end
-        local handle = tool:FindFirstChild("Handle")
-        if handle and handle:GetAttribute("SkinName") == skin then return end
-        if tool.Name == "[Knife]" then
-            applyKnife(char, tool, skin)
-        elseif tool.Name == "[Bat]" then
-            applyBat(tool, skin)
-        else
-            applyGun(tool, skin)
-        end
-    end
-
-    local function setupTool(tool)
-        if not tool:IsA("Tool") then return end
-        if tool:GetAttribute("GlorySetup") then return end
-        tool:SetAttribute("GlorySetup", true)
-
-        tool.Equipped:Connect(function()
-            local char = tool.Parent
-            if char ~= localPlayer.Character then return end
-            applyCurrentSkin(tool)
-        end)
-
-        tool.Unequipped:Connect(function()
+        local function applyCurrentSkin(tool)
+            if not tool or not tool.Parent then return end
+            local char = localPlayer.Character
+            if tool.Parent ~= char then return end
+            if not shared['x_x'] then return end
+            if not shared['x_x']['skins'] then return end
+            local skin = shared['x_x']['skins'][tool.Name]
+            if not skin or skin == "" then return end
+            local handle = tool:FindFirstChild("Handle")
+            if handle and handle:GetAttribute("SkinName") == skin then return end
             if tool.Name == "[Knife]" then
-                local data = knifeData[tool]
-                if not data then return end
-                if data.welds then
-                    for _, w in ipairs(data.welds) do
-                        if w then w:Destroy() end
-                    end
-                    data.welds = {}
-                end
-                if data.sounds then
-                    for _, s in ipairs(data.sounds) do
-                        if s and s.Parent then s:Destroy() end
-                    end
-                    data.sounds = {}
-                end
-                local mesh = tool:FindFirstChild("Default")
-                if mesh then
-                    for _, v in ipairs(mesh:GetChildren()) do
-                        if v.Name == "Handle.R" or v:IsA("Model") or (v:IsA("MeshPart") and v.Name ~= "Default") then
-                            v:Destroy()
+                applyKnife(char, tool, skin)
+            elseif tool.Name == "[Bat]" then
+                applyBat(tool, skin)
+            else
+                applyGun(tool, skin)
+            end
+        end
+
+        local function setupTool(tool)
+            if not tool:IsA("Tool") then return end
+            if tool:GetAttribute("Wiz") then return end
+            tool:SetAttribute("Wiz", true)
+
+            tool.Equipped:Connect(function()
+                local char = tool.Parent
+                if char ~= localPlayer.Character then return end
+                applyCurrentSkin(tool)
+            end)
+
+            tool.Unequipped:Connect(function()
+                if tool.Name == "[Knife]" then
+                    local data = knifeData[tool]
+                    if not data then return end
+                    if data.welds then
+                        for _, w in ipairs(data.welds) do
+                            if w then w:Destroy() end
                         end
+                        data.welds = {}
                     end
-                    mesh.Transparency = 0
+                    if data.sounds then
+                        for _, s in ipairs(data.sounds) do
+                            if s and s.Parent then s:Destroy() end
+                        end
+                        data.sounds = {}
+                    end
+                    local mesh = tool:FindFirstChild("Default")
+                    if mesh then
+                        for _, v in ipairs(mesh:GetChildren()) do
+                            if v.Name == "Handle.R" or v:IsA("Model") or (v:IsA("MeshPart") and v.Name ~= "Default") then
+                                v:Destroy()
+                            end
+                        end
+                        mesh.Transparency = 0
+                    end
+                end
+            end)
+
+            if tool.Parent == localPlayer.Character then
+                applyCurrentSkin(tool)
+            end
+        end
+
+        local function watchCharacter(char)
+            if not char then return end
+            for _, v in ipairs(char:GetChildren()) do
+                if v:IsA("Tool") then
+                    setupTool(v)
                 end
             end
+            char.ChildAdded:Connect(function(v)
+                if v:IsA("Tool") then
+                    setupTool(v)
+                end
+            end)
+        end
+
+        watchCharacter(localPlayer.Character)
+        localPlayer.CharacterAdded:Connect(watchCharacter)
+
+        local backpack = localPlayer:WaitForChild("Backpack")
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                setupTool(tool)
+            end
+        end
+        backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                setupTool(child)
+            end
         end)
 
-        if tool.Parent == localPlayer.Character then
-            applyCurrentSkin(tool)
-        end
-    end
-
-    local function watchCharacter(char)
-        if not char then return end
-        for _, v in ipairs(char:GetChildren()) do
-            if v:IsA("Tool") then
-                setupTool(v)
+        if localPlayer.Character then
+            for _, v in ipairs(localPlayer.Character:GetChildren()) do
+                if v:IsA("Tool") then
+                    applyCurrentSkin(v)
+                end
             end
         end
-        char.ChildAdded:Connect(function(v)
-            if v:IsA("Tool") then
-                setupTool(v)
-            end
-        end)
-    end
-
-    watchCharacter(localPlayer.Character)
-    localPlayer.CharacterAdded:Connect(watchCharacter)
-
-    local backpack = localPlayer:WaitForChild("Backpack")
-    for _, tool in ipairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            setupTool(tool)
-        end
-    end
-    backpack.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then
-            setupTool(child)
-        end
-    end)
-
-    if localPlayer.Character then
-        for _, v in ipairs(localPlayer.Character:GetChildren()) do
-            if v:IsA("Tool") then
-                applyCurrentSkin(v)
-            end
-        end
-    end
