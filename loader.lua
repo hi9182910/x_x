@@ -110,7 +110,7 @@ getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
             mesh.MeshType = Enum.MeshType.FileMesh
             mesh.MeshId = meshId
             if textureId then mesh.TextureId = textureId end
-            mesh.Scale = Vector3.new(0.65, 1.13, 0.65)
+            mesh.Scale = Vector3.new(0.6, 1.13, 0.6)
             mesh.Offset = Vector3.new(0, 0.25, 0)
             mesh.Parent = part
 
@@ -253,176 +253,69 @@ getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
     end
 
 local function ExactPoint(character)
-	if not character then return nil end
+    if not character then return nil end
 
-	local mousePos = UserInputService:GetMouseLocation()
-	local camRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+    local mousePos = UserInputService:GetMouseLocation()
+    local camRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
+    local origin, dir = camRay.Origin, camRay.Direction.Unit
 
-	local origin = camRay.Origin
-	local dir = camRay.Direction
-	local dirLen = dir.Magnitude
-	if dirLen < 1e-12 then return nil end
-	dir = dir / dirLen
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = { character }
 
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Whitelist
-	params.FilterDescendantsInstances = { character }
-	params.IgnoreWater = true
+    local function isIgnored(inst)
+        return inst.Name == "Handle" 
+            or inst:FindFirstAncestorOfClass("Accessory") 
+            or inst:FindFirstAncestorOfClass("Tool")
+    end
 
-	local function isIgnored(inst: Instance): boolean
-		return inst.Name == "Handle"
-			or inst:FindFirstAncestorOfClass("Accessory") ~= nil
-			or inst:FindFirstAncestorOfClass("Tool") ~= nil
-	end
+    local direct = Workspace:Raycast(origin, dir * 5000, params)
+    if direct and not isIgnored(direct.Instance) then
+        return { Part = direct.Instance, Position = direct.Position }
+    end
 
-	local function validHit(res)
-		return res and res.Instance and res.Instance:IsDescendantOf(character) and not isIgnored(res.Instance)
-	end
+    local bestKey = math.huge
+    local bestPoint = nil
+    local bestPart = nil
 
-	local direct = workspace:Raycast(origin, dir * 5000, params)
-	if validHit(direct) then
-		return { Part = direct.Instance, Position = direct.Position }
-	end
+    for _, inst in ipairs(character:GetChildren()) do 
+        if inst:IsA("BasePart") and not isIgnored(inst) then
+            local cf = inst.CFrame
+            local halfSize = inst.Size * 0.5
+            
+            local objOrigin = cf:PointToObjectSpace(origin)
+            local objDir = cf:VectorToObjectSpace(dir)
 
-	local function closestSurfacePointOBBToRay(part: BasePart): (Vector3?, number?)
-		local cf = part.CFrame
-		local half = part.Size * 0.5
-		local hx, hy, hz = half.X, half.Y, half.Z
+            local t = -objOrigin:Dot(objDir)
+            local p = objOrigin + objDir * math.max(0, t)
 
-		local o = cf:PointToObjectSpace(origin)
-		local d = cf:VectorToObjectSpace(dir)
-		local dLen = d.Magnitude
-		if dLen < 1e-12 then return nil end
-		d = d / dLen
+            local q = Vector3.new(
+                math.clamp(p.X, -halfSize.X, halfSize.X),
+                math.clamp(p.Y, -halfSize.Y, halfSize.Y),
+                math.clamp(p.Z, -halfSize.Z, halfSize.Z)
+            )
 
-		local function clampBox(p: Vector3): Vector3
-			return Vector3.new(
-				math.clamp(p.X, -hx, hx),
-				math.clamp(p.Y, -hy, hy),
-				math.clamp(p.Z, -hz, hz)
-			)
-		end
+            local worldQ = cf:PointToWorldSpace(q)
+            local delta = worldQ - origin
+            local projection = dir:Dot(delta)
 
-		local function pushToSurfaceIfInside(q: Vector3): Vector3
-			local ax, ay, az = math.abs(q.X), math.abs(q.Y), math.abs(q.Z)
-			if ax < hx and ay < hy and az < hz then
-				local adx, ady, adz = math.abs(d.X), math.abs(d.Y), math.abs(d.Z)
-				if adx >= ady and adx >= adz then
-					return Vector3.new((d.X >= 0) and -hx or hx, q.Y, q.Z)
-				elseif ady >= adz then
-					return Vector3.new(q.X, (d.Y >= 0) and -hy or hy, q.Z)
-				else
-					return Vector3.new(q.X, q.Y, (d.Z >= 0) and -hz or hz)
-				end
-			end
-			return q
-		end
+            if projection > 0 then
+                local lateralDist = (delta - (dir * projection)).Magnitude
+                local key = lateralDist / projection 
 
-		local candidates = { 0, (-o):Dot(d) }
+                if key < bestKey and key < 0.3 then 
+                    local hitCheck = Workspace:Raycast(origin, delta, params)
+                    if hitCheck and hitCheck.Instance == inst then
+                        bestKey = key
+                        bestPoint = worldQ
+                        bestPart = inst
+                    end
+                end
+            end
+        end
+    end
 
-		local function addAxis(oA: number, dA: number, hA: number)
-			if math.abs(dA) < 1e-12 then return end
-			table.insert(candidates, (-hA - oA) / dA)
-			table.insert(candidates, ( hA - oA) / dA)
-		end
-
-		addAxis(o.X, d.X, hx)
-		addAxis(o.Y, d.Y, hy)
-		addAxis(o.Z, d.Z, hz)
-
-		local bestKey = math.huge
-		local bestQW = nil
-
-		for _, t in ipairs(candidates) do
-			if t >= 0 then
-				local p = o + d * t
-				local q = pushToSurfaceIfInside(clampBox(p))
-				local qW = cf:PointToWorldSpace(q)
-
-				local proj = dir:Dot(qW - origin)
-				if proj > 0.01 then
-					local lateral = (qW - (origin + dir * proj)).Magnitude
-					local key = (lateral / proj)
-					if key < bestKey then
-						bestKey = key
-						bestQW = qW
-					end
-				end
-			end
-		end
-
-		return bestQW, bestKey
-	end
-
-	local function tryRedirectToPoint(p: Vector3)
-		local v = p - origin
-		local dist = v.Magnitude
-		if dist < 1e-6 then return nil end
-		local res = workspace:Raycast(origin, v, params)
-		if validHit(res) then
-			return { Part = res.Instance, Position = res.Position }
-		end
-		return nil
-	end
-
-	local K = 6
-	local candPoints = table.create(K)
-	local candKeys = table.create(K)
-	local candCount = 0
-
-	local function pushCandidate(p: Vector3, key: number)
-		if candCount < K then
-			candCount += 1
-			candPoints[candCount] = p
-			candKeys[candCount] = key
-		else
-			local worstI = 1
-			local worstK = candKeys[1]
-			for i = 2, K do
-				if candKeys[i] > worstK then
-					worstK = candKeys[i]
-					worstI = i
-				end
-			end
-			if key < worstK then
-				candPoints[worstI] = p
-				candKeys[worstI] = key
-			end
-		end
-	end
-
-	for _, inst in ipairs(character:GetDescendants()) do
-		if inst:IsA("BasePart") and not isIgnored(inst) then
-			local p, key = closestSurfacePointOBBToRay(inst)
-			if p and key then
-				pushCandidate(p, key)
-			end
-		end
-	end
-
-	for i = 1, candCount - 1 do
-		local bestI = i
-		local bestK = candKeys[i]
-		for j = i + 1, candCount do
-			if candKeys[j] < bestK then
-				bestK = candKeys[j]
-				bestI = j
-			end
-		end
-		if bestI ~= i then
-			candKeys[i], candKeys[bestI] = candKeys[bestI], candKeys[i]
-			candPoints[i], candPoints[bestI] = candPoints[bestI], candPoints[i]
-		end
-	end
-
-	for i = 1, candCount do
-		local out = tryRedirectToPoint(candPoints[i])
-		if out then
-			return out
-		end
-	end
-
-	return nil
+    return bestPart and { Part = bestPart, Position = bestPoint } or nil
 end
 
     local function CenterPoint(character)
