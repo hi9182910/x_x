@@ -1,4 +1,5 @@
-getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
+
+   getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
 
 
     local Players = game:GetService("Players")
@@ -57,8 +58,8 @@ getgenv().LPH_NO_VIRTUALIZE = function(f) return f end
         ["Reptile"] = {soundid = "rbxassetid://18765103349", animationid = "rbxassetid://18788955930", positionoffset = Vector3.new(-0.03, -0.06, -0.92), rotationoffset = Vector3.new(168.63, 90.00, -180.00)},
         ["Emerald"] = {soundid = "", animationid = "", positionoffset = Vector3.new(-0.14, -0.06, -0.92), rotationoffset = Vector3.new(168.63, 90.00, 108.00)},
         ["Ribbon"] = {soundid = "rbxassetid://130974579277249", animationid = "rbxassetid://124102609796063", positionoffset = Vector3.new(0.02, -0.25, -0.05), rotationoffset = Vector3.new(90.00, 0.00, 180.00)},
-        ["Red Tiger"] = {soundid = "", animationid = "", positionoffset = Vector3.new(-0.13, -0.25, -1.14), rotationoffset = Vector3.new(168.63, 90.00, 108.00)},
-        ["Golden"] = {soundid = "", animationid = "", positionoffset = Vector3.new(-0.13, -0.25, -1.14), rotationoffset = Vector3.new(-90.00, 180.00, -4.97), particle = true},
+        ["Red Tiger"] = {soundid = "", animationid = "", positionoffset = Vector3.new(-0.04, -0.16, -1.09), rotationoffset = Vector3.new(165.0, 90.00, 108.00)},
+        ["Golden"] = {soundid = "", animationid = "", positionoffset = Vector3.new(-0.13, -0.25, -1.14), rotationoffset = Vector3.new(-90.00, 180.00, -6.97), particle = true},
     }
 
     local r15 = {
@@ -524,29 +525,38 @@ end
 
 local function isMouseInHitboxFOV(plr)
     local char = plr.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then 
-        return false 
+    if not char then
+        return false
     end
 
     local mousePos = UserInputService:GetMouseLocation()
-    local camRay = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
-    local params = RaycastParams.new()
-    params.FilterDescendantsInstances = { localPlayer.Character or workspace }
-    params.FilterType = Enum.RaycastFilterType.Blacklist
-    params.IgnoreWater = true
-    local result = workspace:Raycast(camRay.Origin, camRay.Direction * 10000, params)
+    local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 
-    if result and result.Instance then
-        local hitModel = result.Instance:FindFirstAncestorWhichIsA("Model")
-        if hitModel then
-            local hitPlayer = Players:GetPlayerFromCharacter(hitModel)
-            return hitPlayer == plr
-        end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Whitelist
+    params.FilterDescendantsInstances = { char }
+    params.IgnoreWater = true
+
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 10000, params)
+    if not result or not result.Instance then
+        return false
     end
 
-    return false
-end
+    local inst = result.Instance
+    if not inst:IsA("BasePart") then
+        return false
+    end
 
+    if inst:FindFirstAncestorOfClass("Accessory") then
+        return false
+    end
+
+    if inst:FindFirstAncestorOfClass("Tool") then
+        return false
+    end
+
+    return true
+end
 
 local function updateTargetVisuals()
     if not targetPlayer or not targetPlayer.Character then
